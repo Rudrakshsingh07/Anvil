@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dsa-editor"
+version = "0.1.0"
+description = "A TUI text editor with hand-written DSA structures and a live state bridge"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "DSA Editor" }]
+dependencies = [
+    "prompt_toolkit>=3.0.43",
+    "Pygments>=2.15",
+]
+
+[project.scripts]
+dsa-editor = "dsa_editor.cli:main"
+anvil = "dsa_editor.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["dsa_editor*"]
+
+[tool.setuptools.package-data]
+dsa_editor = ["data/*.json"]
