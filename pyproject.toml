@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,8 +8,9 @@ version = "0.1.0"
 description = "A TUI text editor with hand-written DSA structures and a live state bridge"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
-authors = [{ name = "DSA Editor" }]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "DSA Editor contributors" }]
 dependencies = [
     "prompt_toolkit>=3.0.43",
     "Pygments>=2.15",
@@ -18,9 +19,11 @@ dependencies = [
 [project.scripts]
 dsa-editor = "dsa_editor.cli:main"
 anvil = "dsa_editor.cli:main"
+anvil-viz = "dsa_visualizer.cli:main"
+dsa-visualizer = "dsa_visualizer.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["dsa_editor*"]
+include = ["dsa_editor*", "dsa_visualizer*"]
 
 [tool.setuptools.package-data]
 dsa_editor = ["data/*.json"]

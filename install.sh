@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the editor's dependencies and expose the `anvil` command on PATH.
+# Install the editor + visualizer and expose `anvil` / `anvil-viz` on PATH.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -19,11 +19,14 @@ rm -f "$log"
 target="${XDG_BIN_HOME:-$HOME/.local/bin}"
 mkdir -p "$target"
 ln -sfn "$PWD/.venv/bin/anvil" "$target/anvil"
+ln -sfn "$PWD/.venv/bin/anvil-viz" "$target/anvil-viz"
 
 case ":$PATH:" in
     *":$target:"*) ;;
-    *) echo "note: add $target to your PATH to run 'anvil' from anywhere" ;;
+    *) echo "note: add $target to your PATH to run 'anvil' and 'anvil-viz' from anywhere" ;;
 esac
 
 echo "Installed: $target/anvil"
-echo "Run: anvil [file]"
+echo "Installed: $target/anvil-viz"
+echo "Run the editor:     anvil [file]"
+echo "Run the visualizer: anvil-viz"

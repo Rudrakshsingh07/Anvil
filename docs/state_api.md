@@ -5,6 +5,10 @@ complete, read-only JSON snapshot of every data structure; the visualizer polls
 it.  Nothing in the editor is specific to the visualizer, so no special demo
 build is needed.
 
+The bundled implementation is **`anvil-viz`**, a Tkinter app in
+`dsa_visualizer/`.  Its user guide is [`visualizer.md`](visualizer.md); this
+document is the data contract it consumes.
+
 ## Where the state lives
 
 | Channel | Address | Notes |
@@ -357,6 +361,7 @@ most once per second and once more with `status: "closed"` on exit.
 | Autosave | Countdown ring from `autosave.due_in_seconds` |
 | File | Title bar with `file.display_path`, `dirty`, `language` |
 
-The visualizer can be a completely separate Python app using Tkinter, Pygame,
-Rich, a web page, or a graph library.  It only needs `StateClient` (or the JSON
-file) and the field names above.
+The bundled visualizer uses exactly this mapping in `dsa_visualizer/app.py`.
+A different consumer can be a completely separate Python app using Tkinter,
+Pygame, Rich, a web page, or a graph library.  It only needs `StateClient` (or
+the JSON file) and the field names above.

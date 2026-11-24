@@ -9,6 +9,8 @@ data structures.  The installed command is **`anvil`**; the Python package is
 The editor is built for a Data Structures & Algorithms lecture: the undo/redo
 stacks, completion trie, clipboard-history queue and live statistics are
 visible in the UI and exposed to a separate Python process for visualization.
+The bundled visualizer is **`anvil-viz`**, a Tkinter desktop application
+documented in [`visualizer.md`](visualizer.md).
 
 ## Contents
 
@@ -66,6 +68,7 @@ keystrokes.  Pygments only tokenizes text for colouring.
 - A modern terminal with ANSI colours
 - Linux, macOS, or WSL on Windows
 - `prompt_toolkit` and `Pygments` (installed automatically)
+- For the visualizer: Tkinter and a graphical session (X11 or Wayland)
 
 ### 2.2 Quick install
 
@@ -80,7 +83,8 @@ The installer:
 
 1. creates `.venv` if it does not exist;
 2. installs the package in editable mode;
-3. links the `anvil` command into `~/.local/bin` (or `$XDG_BIN_HOME`);
+3. links the `anvil` and `anvil-viz` commands into `~/.local/bin` (or
+   `$XDG_BIN_HOME`);
 4. prints a note if that directory is not on `PATH`.
 
 Then run:
@@ -89,6 +93,7 @@ Then run:
 anvil
 anvil demo.py
 anvil --help
+anvil-viz          # in a second terminal, while the editor runs
 ```
 
 ### 2.3 Manual install
@@ -101,6 +106,7 @@ python3 -m venv .venv
 .venv/bin/pip install -e .
 mkdir -p ~/.local/bin
 ln -sf "$PWD/.venv/bin/anvil" ~/.local/bin/anvil
+ln -sf "$PWD/.venv/bin/anvil-viz" ~/.local/bin/anvil-viz
 ```
 
 Make sure `~/.local/bin` is on `PATH`.  For example, in `~/.zshrc` or
@@ -110,32 +116,41 @@ Make sure `~/.local/bin` is on `PATH`.  For example, in `~/.zshrc` or
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The venv also contains a `dsa-editor` alias:
+The venv also contains `dsa-editor` and `dsa-visualizer` aliases:
 
 ```bash
 .venv/bin/dsa-editor demo.py
+.venv/bin/dsa-visualizer
 ```
 
 ### 2.4 Run without installing
 
-`run.sh` creates the venv on first use and runs the package directly:
+`run.sh` and `run-viz.sh` create the venv on first use and run the packages
+directly:
 
 ```bash
 ./run.sh
 ./run.sh notes.md
 ./run.sh --help
+
+./run-viz.sh
+./run-viz.sh --check
 ```
 
-This does not create the global `anvil` link.
+This does not create the global `anvil` or `anvil-viz` links.
 
 ### 2.5 Verify the installation
 
 ```bash
 anvil --version
+anvil-viz --version
 ```
 
 The output depends on the invoked name, for example `anvil 0.1.0` or
-`dsa-editor 0.1.0`.
+`dsa-editor 0.1.0`, and `anvil-viz 0.1.0`.
+
+If Tkinter is missing, `anvil-viz` prints the system package to install.
+`anvil-viz --check` works without a display.
 
 ### 2.6 Updating and uninstalling
 
@@ -145,10 +160,10 @@ To reinstall after moving the project or changing dependencies:
 ./install.sh
 ```
 
-To remove the global command:
+To remove the global commands:
 
 ```bash
-rm -f ~/.local/bin/anvil
+rm -f ~/.local/bin/anvil ~/.local/bin/anvil-viz
 ```
 
 The project's `.venv` can be deleted separately.  Your text files are never
@@ -662,7 +677,7 @@ keys are repeated here.
 ## 14. Live state bridge
 
 The editor can expose every data structure and its live data to a separate
-Python application.  This is the contract the future visualizer will use; the
+Python application.  This is the contract the bundled visualizer uses; the
 editor does not need a special demo mode.
 
 ### 14.1 Two channels
@@ -790,6 +805,34 @@ The complete field-by-field schema, ordering rules and sample payloads are in
 - The bridge is read-only.  There is no remote editing API.
 - It binds to `127.0.0.1` only.  Do not expose it to a network.
 - Clipboard text is included in the snapshot; keep the bridge local.
+
+### 14.6 The bundled visualizer
+
+`anvil-viz` is the reference consumer.  Start the editor in one terminal and
+the visualizer in another:
+
+```bash
+anvil examples/demo.py
+anvil-viz
+```
+
+The window shows the prefix trie, the undo and redo stacks, the clipboard FIFO
+queue, live statistics, a history chart and an event log.  It reads HTTP first
+and falls back to the JSON state file, so it also works after the editor exits.
+
+Useful invocations:
+
+```bash
+anvil-viz                       # live window
+anvil-viz --port 9000           # match a non-default editor port
+anvil-viz --geometry 1200x800   # smaller window
+anvil-viz --check               # print one snapshot and exit (no display)
+anvil-viz --check --json        # raw JSON snapshot
+```
+
+The visualizer keys are `q`/`Esc` (quit), `r` (reconnect), `Space` (pause) and
+`F11` (fullscreen).  The complete guide, including panel-by-panel reading and a
+lecture script, is in [`visualizer.md`](visualizer.md).
 
 ## 15. Command-line options
 
@@ -955,6 +998,14 @@ dsa_editor/
     ├── server.py   read-only HTTP server
     ├── client.py   StateClient
     └── statefile.py atomic JSON writer
+
+dsa_visualizer/
+├── model.py        trie lens, tidy layout, cards, sparkline, change tracker
+├── source.py       background HTTP long-poll + JSON-file fallback
+├── theme.py        palette and canvas drawing helpers
+├── app.py          Tkinter window and live update pump
+├── cli.py          argparse entry point for anvil-viz
+└── __main__.py     python -m dsa_visualizer
 ```
 
 ### 18.2 Data flow
@@ -971,9 +1022,16 @@ EditorApp
    ├── Trie.learn_text()             learn identifiers
    ├── compute_text_stats()          live counts
    ├── ClipboardHistory             copy/cut history
-   └── build_state() ──► StateHub ──► HTTP server
-                                  └─► state.json
+   └── build_state() ──► StateHub ──► HTTP server ─┐
+                                  └─► state.json ─┤
+                                                  ▼
+                                     dsa_visualizer (separate process)
+                                       LiveSource ──► Tkinter window
 ```
+
+The visualizer is a pure consumer of the public bridge.  It never imports
+`dsa_editor` internals, so it can run on a second monitor, in another Python
+environment, or against a saved state file.
 
 ### 18.3 Adding a command
 
@@ -995,13 +1053,16 @@ in `dsa_editor/keywords.py`.  Pygments supplies the syntax lexer.
 ### 18.6 Tests
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m unittest discover -s tests -v   # 88 tests
 .venv/bin/python scripts/pty_smoke.py
 .venv/bin/python scripts/bridge_smoke.py
+.venv/bin/python scripts/visualizer_smoke.py
 ```
 
-The unit suite covers the structures, file I/O, bridge and app integration.
-The PTY scripts launch the real full-screen editor.
+The unit suite covers the structures, file I/O, bridge, app integration and the
+visualizer model/source.  The PTY scripts launch the real full-screen editor;
+the visualizer smoke test opens the actual Tkinter window and captures a
+screenshot.
 
 ## 19. Lecture demo walkthrough
 
@@ -1022,17 +1083,19 @@ The PTY scripts launch the real full-screen editor.
    older entry.  Show the queue in the panel.
 6. **Autosave.**  Press `F5` to toggle it and watch the panel countdown.  Press
    `F5` again to turn it back on.
-7. **Live bridge.**  In a second terminal:
+7. **Live visualizer.**  In a second terminal:
 
    ```bash
    cd dsa-editor
-   .venv/bin/python examples/watch_state.py
+   anvil-viz
    ```
 
-   Or open `http://127.0.0.1:8765/state` in a browser.  Point out live word
-   count, undo/redo depths, trie nodes, clipboard queue and suggestions.
-8. **Explain the contract.**  The visualizer will consume the same JSON; the
-   editor needs no special demo mode.
+   Point out the trie growing with the prefix, undo cards appearing, the
+   clipboard queue filling and the event log.  Press `F11` for fullscreen and
+   `Space` to pause while you talk.
+8. **Explain the contract.**  The visualizer consumes the same public JSON as
+   `examples/watch_state.py`; the editor needs no special demo mode.  Open
+   `http://127.0.0.1:8765/state` in a browser to show the raw payload.
 
 ## 20. Limitations
 
@@ -1047,6 +1110,8 @@ The PTY scripts launch the real full-screen editor.
 - No plugin system.
 - Autosave can overwrite the open file; turn it off if that is not desired.
 - The HTTP bridge is read-only and local-only; it is not a remote editing API.
+- The visualizer needs a graphical session and Tkinter; use `anvil-viz --check`
+  for a headless summary.
 
 ## Appendix A: default limits
 
@@ -1093,9 +1158,11 @@ programming words plus identifiers learned from the document.
 
 ## Appendix D: related documents
 
-- [`keybindings.md`](keybindings.md) — complete keyboard reference.
+- [`keybindings.md`](keybindings.md) — complete editor and visualizer keyboard reference.
+- [`visualizer.md`](visualizer.md) — live visualizer manual.
 - [`state_api.md`](state_api.md) — visualizer JSON/HTTP contract.
 - [`dsa_notes.md`](dsa_notes.md) — lecture notes on each data structure.
 - [`../README.md`](../README.md) — project overview and quick start.
 - [`../examples/watch_state.py`](../examples/watch_state.py) — live-state
   consumer example.
+- [`../examples/demo.py`](../examples/demo.py) — sample file for the demo.

@@ -3,7 +3,8 @@
 The editor uses Emacs-style editing keys plus its own application shortcuts.
 `Ctrl` is written as `Ctrl-`, `Alt` as `Alt-` (sometimes labelled `Meta`).
 
-See [`manual.md`](manual.md) for the full user manual and command reference.
+See [`manual.md`](manual.md) for the full user manual, [`visualizer.md`](visualizer.md)
+for the separate live visualizer, and the command reference below.
 
 > If your terminal captures `Ctrl-S` / `Ctrl-Q` for flow control, run
 > `stty -ixon` in that terminal, or use `F2` to save and `:q` to quit.
@@ -142,3 +143,18 @@ Open with `F9`, `Ctrl-P`, or a shortcut above, type the command and press
 | `F1` | Open/close help |
 | `Esc` | Close help |
 | `q` | Close help (while help is focused) |
+
+## Visualizer window
+
+These keys apply to the separate **`anvil-viz`** window, not to the editor.
+See [`visualizer.md`](visualizer.md) for the full guide.
+
+| Key | Action |
+|---|---|
+| `q` / `Esc` | Close the visualizer |
+| `r` | Reconnect to the editor bridge |
+| `Space` | Pause/resume applying new snapshots |
+| `F11` | Toggle fullscreen |
+
+The visualizer is read-only; none of its keys change the document.  While it is
+paused, the editor keeps running and snapshots are buffered until you resume.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Minimal live-state consumer for the future visualizer.
+"""Minimal live-state consumer; see ``anvil-viz`` for the full visualizer.
 
 Run the editor in one terminal, then:
 
@@ -7,7 +7,8 @@ Run the editor in one terminal, then:
     .venv/bin/python examples/watch_state.py --raw
     .venv/bin/python examples/watch_state.py --file   # JSON-file fallback
 
-This is deliberately not a visualizer; it only demonstrates the data contract.
+This script only prints a summary of the data contract.  For the graphical
+version, run ``anvil-viz`` (documented in ``docs/visualizer.md``).
 """
 
 from __future__ import annotations
