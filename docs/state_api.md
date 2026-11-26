@@ -16,7 +16,7 @@ document is the data contract it consumes.
 | HTTP (preferred) | `http://127.0.0.1:8765/state` | Read-only, CORS enabled, long-poll supported |
 | HTTP trie | `http://127.0.0.1:8765/trie?depth=6&limit=2000` | Builds a deeper trie view on demand |
 | JSON file | `~/.local/state/dsa-editor/state.json` | Atomic write, at most once per second |
-| Python client | `dsa_editor.bridge.StateClient` | Wraps HTTP + long-poll |
+| Python client | `dsa_editor.bridge.StateClient` | Read-only client kept for the visualizer |
 
 Start the editor normally (`./run.sh file.py`).  The port is shown in the
 data panel and in the status bar.  If 8765 is busy, the editor tries the next
@@ -257,7 +257,7 @@ Every snapshot has:
 ```
 
 `bom` is a hex string (e.g. `efbbbf`), empty for none.  `newline` is `LF`,
-`CRLF` or `CR`.  `language` is the Pygments alias used by the trie.
+`CRLF` or `CR`.  `language` is the built-in language key used by the trie and highlighter.
 
 ## `autosave`
 

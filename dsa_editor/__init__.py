@@ -1,5 +1,10 @@
-"""DSA Editor: a TUI text editor with hand-written data structures."""
+"""Shared read-only state-bridge library used by the visualizer.
 
-__version__ = "0.1.0"
+The editor itself is the C binary in ``build/anvil``; it does not import any
+Python.  This package now only carries the JSON schema helpers and HTTP client
+that the separate visualizer (and its tests) already depend on.
+"""
+
+__version__ = "0.2.0"
 
 __all__ = ["__version__"]

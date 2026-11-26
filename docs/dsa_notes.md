@@ -1,12 +1,12 @@
 # DSA notes for the lecture
 
-This document maps the editor's behaviour to the data structures in
-`dsa_editor/structures/`.  Everything is hand-written; the TUI library
-(`prompt_toolkit`) is only the presentation layer.
+This document maps the editor's behaviour to the data structures in `src/`.
+Everything is hand-written in C11; the terminal renderer in `src/ui.c` only
+draws the screen and decodes keys.
 
 ## 1. Undo / redo — two bounded stacks
 
-**File:** `dsa_editor/structures/stack.py`
+**File:** `src/undo.c` (types in `src/anvil.h`)
 
 ### Representation
 
@@ -18,20 +18,20 @@ undo stack (top at right)                 redo stack (top at right)
           bottom      top                        top
 ```
 
-`BoundedStack[T]` wraps a `collections.deque`:
+`SnapshotStack` is a dynamic array with a logical top at `len - 1`:
 
 | Operation | Meaning | Complexity |
 |---|---|---|
-| `push(x)` | Add to the top; returns the evicted bottom item | O(1) |
+| `push(x)` | Add to the top; evicts the bottom when over capacity | O(1) amortised |
 | `pop()` | Remove and return the top | O(1) |
 | `peek()` | Read the top | O(1) |
-| `popleft()` | Remove the bottom (used for memory trimming) | O(1) |
+| `trim()` | Drop the bottom (used for memory trimming) | O(1) per snapshot |
 
 `Snapshot` stores the **document text before the edit**, the cursor position,
 the change position, inserted/deleted previews, a label, a timestamp and an
 `edit_count` (how many keystrokes were merged into this undo unit).
 
-`UndoRedoManager` invariants:
+`UndoRedo` invariants:
 
 * The undo stack contains states from the past; the top is the most recent
   pre-edit state.
@@ -43,7 +43,7 @@ the change position, inserted/deleted previews, a label, a timestamp and an
   `max_total_chars` (default 4,000,000) so snapshots cannot exhaust memory.
 * Typing/backspacing coalescing: consecutive non-whitespace inserts (or deletes)
   within `group_window` (0.9 s) extend the current undo unit instead of pushing
-  a new snapshot.  A cursor move calls `break_group()`.
+  a new snapshot.  A cursor move calls `undo_break_group()`.
 
 ### Why snapshots instead of deltas?
 
@@ -62,17 +62,19 @@ version is easier to explain and to visualize; the memory bound keeps it safe.
 
 ## 2. Trie — prefix completion
 
-**File:** `dsa_editor/structures/trie.py`
+**File:** `src/trie.c`
 
 ### Representation
 
 Each `TrieNode` has:
 
-```python
-children: dict[str, TrieNode]   # character -> child
-terminal: bool                  # is this the end of a word?
-weight: int                     # ranking (keyword 80, common 45, learned 8)
-kind: str | None                # keyword / common / word / snippet
+```c
+char ch;                 /* character on this edge */
+TrieNode **children;     /* dynamic array of child pointers */
+int nchild, cap;
+int terminal;            /* is this the end of a word? */
+int weight;              /* ranking (keyword 80, common 45, learned 8) */
+char kind[16];           /* keyword / common / word / snippet */
 ```
 
 The root is an empty-character node.  `print` and `private` share the path
@@ -80,13 +82,11 @@ The root is an empty-character node.  `print` and `private` share the path
 
 | Operation | Meaning | Complexity |
 |---|---|---|
-| `insert(word)` | Add/update a word | O(L) |
-| `contains(word)` | Exact lookup | O(L) |
-| `starts_with(prefix)` | Prefix lookup | O(L) |
-| `complete(prefix)` | All words under the prefix, ranked | O(L + K log K) |
-| `learn_text(text)` | Insert identifiers not already present | O(n) |
-| `remove(word)` | Delete a word and prune empty branches | O(L) |
-| `to_dict()` | JSON tree for the visualizer | O(nodes) |
+| `trie_insert(word)` | Add/update a word | O(L) |
+| `trie_complete(prefix)` | All words under the prefix, ranked | O(L + K log K) |
+| `trie_learn_text(text)` | Insert identifiers not already present | O(n) |
+| `trie_bump(word)` | Raise a word's ranking after use | O(L) |
+| `trie_to_json()` | JSON tree for the visualizer | O(nodes) |
 
 `L` is word length, `K` the number of matches under the prefix, `n` the
 document length.
@@ -94,30 +94,30 @@ document length.
 ### How the editor uses it
 
 1. On open / `:lang`, the trie is rebuilt with the language's keywords and
-   generic programming words (from `data/keywords.json`).
-2. Identifiers in the document are learned (`learn_text`), at most once per
-   second while typing and on save.  `only_if_new=True` prevents repeated text
+   generic programming words (`src/keywords_data.h`).
+2. Identifiers in the document are learned (`trie_learn_text`), at most once
+   per second while typing and on save.  `only_if_new` prevents repeated text
    from inflating weights.
-3. The completion popup asks `complete(current_prefix)`.  The grey inline ghost
-   text uses the best result.
-4. Accepting a completion calls `bump(word, 15)`, so frequently used words rank
-   higher.
+3. The completion popup asks `trie_complete(current_prefix)`.  The grey inline
+   ghost text uses the best result.
+4. Accepting a completion calls `trie_bump(word, 15)`, so frequently used words
+   rank higher.
 
 ### Demo talking points
 
 * Type `pri`: the popup shows `print` (keyword, weight 80) before `private`
-  (common, weight 45).
+   (common, weight 45).
 * Type a new identifier such as `my_helper` twice; it becomes a learned word in
-  the trie (panel's word count grows).
+   the trie (panel's word count grows).
 * Show `/trie` JSON and point out the shared prefix path and terminal flags.
 
 ## 3. Clipboard history — FIFO queue
 
-**File:** `dsa_editor/structures/queue.py`
+**File:** `src/clipboard.c`
 
 ### Representation
 
-`ClipboardHistory` wraps a `collections.deque` with a capacity (default 50):
+`Clipboard` is a bounded dynamic array with a capacity (default 50):
 
 ```
 head (oldest)                                        tail (newest)
@@ -129,11 +129,10 @@ head (oldest)                                        tail (newest)
 
 | Operation | Meaning | Complexity |
 |---|---|---|
-| `enqueue(text)` | Append at the tail; evict head if full | O(1) |
-| `dequeue()` | Remove the head (oldest) | O(1) |
-| `latest()` | Read the tail (normal paste) | O(1) |
-| `get(n)` | Index from the newest (`Alt-n`) | O(1) |
-| `to_dict()` | Oldest-first JSON list | O(size) |
+| `clip_enqueue(text)` | Append at the tail; evict head if full | O(1) amortised |
+| `clip_get(n)` | Index from the newest (`Alt-n`) | O(1) |
+| `clip_size()` | Number of entries | O(1) |
+| `clip_to_json()` | Oldest-first JSON list | O(size) |
 
 Consecutive identical copies refresh the tail's timestamp instead of adding a
 duplicate.  The queue is in-memory only; it is intentionally not persisted.
@@ -141,24 +140,24 @@ duplicate.  The queue is in-memory only; it is intentionally not persisted.
 ### Demo talking points
 
 * Copy several different selections, then paste the newest with `Ctrl-V` and an
-  older one with `Alt-2`.
+   older one with `Alt-2`.
 * The panel shows the queue size and the newest entries; `/clipboard` exposes
-  the same data with `head`/`tail` ids.
+   the same data with `head`/`tail` ids.
 
 ## 4. Live word count — linear scan
 
-**File:** `dsa_editor/structures/stats.py`
+**File:** `src/buffer.c` (`compute_stats`)
 
-```python
-words = len(re.findall(r"\S+", text))
-chars = len(text)
-chars_no_whitespace = sum(not c.isspace() for c in text)
-lines = text.count("\n") + 1
+```c
+words = number of maximal non-whitespace runs;
+chars = len;
+chars_no_ws = chars - whitespace bytes;
+lines = number of '\n' + 1;
 ```
 
 This is an O(n) scan after each text change.  Cursor line/column are derived
-from the cursor index with `text.count("\n", 0, index)` and the last newline
-position.  The status bar, panel and bridge all read the cached result.
+from the cursor byte offset with `buf_line_col()`.  The status bar, panel and
+bridge all read the cached result.
 
 ### Demo talking points
 
@@ -168,19 +167,19 @@ position.  The status bar, panel and bridge all read the cached result.
 ## 5. How the structures reach the visualizer
 
 ```
-Editor (UI thread)                         Visualizer (separate process)
-┌───────────────────────────┐              ┌──────────────────────────┐
-│ UndoRedoManager.to_dict() │              │  StateClient().watch()   │
-│ Trie.to_dict()            │  snapshot    │      or read_state_file  │
-│ ClipboardHistory.to_dict()│ ──────────►  │  draw stacks / trie /    │
-│ stats.to_dict()           │  HTTP/JSON   │  queue / counters        │
-└───────────────────────────┘              └──────────────────────────┘
+Editor process (C)                          Visualizer (separate process)
+┌───────────────────────────┐               ┌──────────────────────────┐
+│ undo_to_json()            │               │  StateClient().watch()   │
+│ trie_to_json()            │  snapshot     │      or read_state_file  │
+│ clip_to_json()            │ ──────────►   │  draw stacks / trie /    │
+│ editor_build_state()      │  HTTP/JSON    │  queue / counters        │
+└───────────────────────────┘               └──────────────────────────┘
 ```
 
-`StateHub` stores the latest complete snapshot behind a condition variable.
-The HTTP server serves it; the UI thread publishes a new snapshot after edits.
-`/trie` can build a deeper tree on demand; the trie's internal lock makes that
-safe while the user types.
+`Bridge` stores the latest complete JSON snapshot behind a mutex and condition
+variable.  The HTTP threads serve it; the UI thread publishes a new snapshot
+after edits.  `/trie` can build a deeper tree on demand; the trie's internal
+lock makes that safe while the user types.
 
 The full field-by-field contract is in [`state_api.md`](state_api.md).
 
@@ -191,7 +190,7 @@ The full field-by-field contract is in [`state_api.md`](state_api.md).
 | Undo stack | O(1) | O(1) | O(1) top | O(k · n), bounded |
 | Redo stack | O(1) | O(1) | O(1) top | O(k · n), bounded |
 | Trie | O(L) | O(L) | O(L) / O(L + K log K) complete | O(total chars) |
-| Clipboard queue | O(1) enqueue | O(1) dequeue | O(1) latest/get | O(capacity · size) |
+| Clipboard queue | O(1) enqueue | O(1) evict | O(1) latest/get | O(capacity · size) |
 | Word count | — | — | O(n) per change | O(1) |
 
 `n` = document length, `L` = word/prefix length, `K` = completions under a

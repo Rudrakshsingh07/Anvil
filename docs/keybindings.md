@@ -32,10 +32,8 @@ for the separate live visualizer, and the command reference below.
 | `Ctrl-Z` | Undo |
 | `Ctrl-Y` | Redo |
 | `Ctrl-_` | Undo (readline alias, same custom stack) |
-| `Ctrl-X` `Ctrl-U` | Undo (readline alias, same custom stack) |
 
-All of these use the editor's own bounded snapshot stacks; prompt_toolkit's
-built-in undo is never used.
+All of these use the editor's own bounded snapshot stacks in `src/undo.c`.
 
 ## Selection and clipboard
 
@@ -85,8 +83,7 @@ it accepts that suggestion instead of moving the cursor.
 | `Alt-D` | Delete the word after the cursor |
 | `Alt-Backspace` | Delete the word before the cursor |
 | `Ctrl-T` | Transpose the two characters around the cursor |
-| `Ctrl-L` | Clear and redraw the screen |
-| `Alt-C` / `Alt-L` / `Alt-U` | Capitalize / lowercase / uppercase the next word |
+| `Ctrl-L` | Force a screen redraw |
 
 ## Completion and highlighting
 
@@ -98,7 +95,7 @@ it accepts that suggestion instead of moving the cursor.
 | `Esc` | Dismiss the completion popup |
 | `:lang python` | Change the syntax language |
 | `:lang auto` | Re-detect the language from the file extension |
-| `:theme monokai` | Change the Pygments colour theme |
+| `:theme monokai` | Change the colour theme (monokai, dracula, solarized, light) |
 
 ## Find and go to
 

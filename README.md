@@ -1,17 +1,18 @@
 # DSA Editor
 
-**A notepad-like terminal text editor with hand-written data structures and a
-live desktop visualizer.**
+**A notepad-like terminal text editor written in C, with hand-written data
+structures and a live desktop visualizer.**
 
 The installed commands are **`anvil`** (the editor) and **`anvil-viz`** (the
-visualizer); the Python packages are `dsa_editor` and `dsa_visualizer`.
+visualizer). The editor is a single C11/POSIX binary with no external runtime
+dependencies. The visualizer remains a separate Tkinter application and reads
+the editor only through its public JSON/HTTP bridge.
 
 It opens, creates, edits and saves ordinary text files of any extension
 (`.py`, `.js`, `.md`, `.json`, `.csv`, `.sql`, …). It is not a GUI and not an
 IDE: the whole editor runs in the terminal, and the undo stacks, completion
-trie, clipboard-history queue and live statistics are implemented in this
-repository rather than delegated to a library. A separate Tkinter application
-draws those same structures live while you type.
+trie, clipboard-history queue and live statistics are implemented from scratch
+in `src/` rather than delegated to a library.
 
 ```
 ┌──────────────────────────────────────────────────────────────┬────────────────────────────┐
@@ -60,30 +61,32 @@ The full manual is in [`docs/visualizer.md`](docs/visualizer.md).
 
 | Area | What it does |
 |---|---|
-| Terminal UI | Full-screen `prompt_toolkit` application; no GUI, no browser |
+| Terminal UI | Full-screen ANSI/termios application; no GUI, no browser, no ncurses |
 | Files | Open/create/save any text format; encoding, BOM and newline preservation; atomic saves; binary-file guard |
 | Undo / redo | Two hand-written bounded stacks of document snapshots, with typing coalescing |
 | Code completion | Character trie seeded with language keywords and learned identifiers; popup plus grey ghost text |
-| Syntax highlighting | Pygments lexers selected by file extension; live theme switching |
+| Syntax highlighting | Built-in lexers selected by file extension or `:lang`; four live colour themes |
 | Autosave | On by default every 30 s for files with a path; toggle with `F5` or `:autosave` |
 | Word count | Live word/character/line counts in the status bar, side panel and bridge |
 | Clipboard history | Bounded FIFO queue; `Ctrl-V` pastes the newest entry, `Alt-1`…`Alt-9` paste older ones |
 | Live state bridge | Read-only HTTP server on `127.0.0.1:8765`, atomic JSON state file, and a Python `StateClient` for external observers |
 | Live visualizer | Separate Tkinter app (`anvil-viz`) that draws the trie, undo/redo stacks, clipboard queue, stats and event log in real time |
 
-## Install
+## Build and install
 
-Requirements: **Python 3.10+** and a modern terminal. Linux, macOS and WSL are
-supported. Windows users should run the editor inside WSL.
+Requirements: a C11 compiler (`cc`), `make`, and a POSIX system (Linux, macOS,
+WSL). The editor itself has no third-party libraries. The optional visualizer
+needs Python 3.10+ with Tkinter (`python3-tk` on Debian/Ubuntu).
 
 ```bash
 cd dsa-editor
-./install.sh
+make                 # builds build/anvil
+./install.sh         # builds, installs the visualizer, links both commands
 ```
 
-`install.sh` creates `.venv`, installs the package in editable mode, and links
-the `anvil` and `anvil-viz` commands into `~/.local/bin` (or `$XDG_BIN_HOME`).
-It prints a note if that directory is not on your `PATH`.
+`install.sh` links `anvil` (the C binary) and `anvil-viz` (the Python
+visualizer) into `~/.local/bin` (or `$XDG_BIN_HOME`) and prints a note if that
+directory is not on your `PATH`.
 
 ```bash
 anvil                  # empty buffer
@@ -92,25 +95,20 @@ anvil --help           # all options
 anvil-viz              # live visualizer (in a second terminal)
 ```
 
-The project venv also contains `dsa-editor` and `dsa-visualizer` aliases:
+You can also install just the binary system-wide:
 
 ```bash
-.venv/bin/dsa-editor demo.py
-.venv/bin/dsa-visualizer
+sudo make install      # /usr/local/bin/anvil
 ```
 
 ### Run without installing
 
 ```bash
-./run.sh               # creates .venv on first run, then starts the editor
+./run.sh               # builds if needed, then starts the editor
 ./run.sh notes.md
 ./run-viz.sh           # creates .venv on first run, then starts the visualizer
 ./run-viz.sh --check   # headless one-shot summary
 ```
-
-The only runtime dependencies are `prompt_toolkit` and `Pygments`. The
-visualizer additionally needs Tkinter, which ships with Python on most
-platforms (`python3-tk` on Debian/Ubuntu, `python3-tkinter` on Fedora).
 
 ## First five minutes
 
@@ -143,6 +141,28 @@ The complete reference, including movement and Emacs-style editing keys, is in
 > If your terminal captures `Ctrl-S` / `Ctrl-Q` for flow control, run
 > `stty -ixon`, or use `F2` to save and `:q` to quit.
 
+## Command bar
+
+Press `F9` or `Ctrl-P` and type a command:
+
+| Command | Action |
+|---|---|
+| `:w [path]` | Save, optionally as another path |
+| `:wq` | Save and quit |
+| `:e path` | Open a file (`:e!` discards changes) |
+| `:new` | New file (`:new!` discards changes) |
+| `:q` / `:q!` | Quit / quit without saving |
+| `:autosave on\|off\|<seconds>` | Configure autosave |
+| `:lang python` | Set the syntax language (`:lang auto` detects it) |
+| `:find text` | Find next occurrence (wraps) |
+| `:goto 42` | Go to line 42 |
+| `:theme monokai` | Switch palette: `monokai`, `dracula`, `solarized`, `light` |
+| `:tab 4` | Set the soft-tab width |
+| `:undo` / `:redo` | History |
+| `:panel` | Toggle the data-structure panel |
+| `:state` | Show the live bridge URL and state file |
+| `:help` / `:clip` / `:path` / `:languages` | Help, clipboard count, path, language list |
+
 ## Documentation
 
 | Document | Contents |
@@ -152,33 +172,33 @@ The complete reference, including movement and Emacs-style editing keys, is in
 | [`docs/keybindings.md`](docs/keybindings.md) | Every editor and visualizer keyboard shortcut |
 | [`docs/state_api.md`](docs/state_api.md) | JSON schema and HTTP contract for the visualizer |
 | [`docs/dsa_notes.md`](docs/dsa_notes.md) | Lecture notes on each data structure and its complexity |
+| [`docs/python-app connection.md`](docs/python-app%20connection.md) | How the C editor and Python visualizer share state |
 | [`examples/watch_state.py`](examples/watch_state.py) | Minimal live-state consumer |
 | [`examples/demo.py`](examples/demo.py) | Sample file for the editor + visualizer demo |
 
 ## Data structures at a glance
 
-- **Undo/redo** (`dsa_editor/structures/stack.py`) — `UndoRedoManager` keeps an
-  undo stack and a redo stack of `Snapshot` objects. Consecutive non-whitespace
-  inserts or backspaces within 0.9 s become one undo unit; moving the cursor
-  starts a new one. Both stacks are bounded by capacity and total stored
-  characters.
-- **Completion trie** (`dsa_editor/structures/trie.py`) — a character trie with
-  terminal flags, ranking weights and kinds (`keyword`, `common`, `word`,
-  `snippet`). It is seeded with language keywords and learns identifiers from
-  the document.
-- **Clipboard queue** (`dsa_editor/structures/queue.py`) — a bounded
-  `collections.deque` used as a FIFO queue: enqueue at the tail, dequeue from
-  the head, `get(n)` from the newest for `Alt-n`.
-- **Statistics** (`dsa_editor/structures/stats.py`) — an O(n) scan for words,
-  characters, non-whitespace characters, lines and cursor position.
+- **Undo/redo** (`src/undo.c`) — bounded undo and redo stacks of `Snapshot`
+  objects. Consecutive
+  non-whitespace inserts or backspaces within 0.9 s become one undo unit;
+  moving the cursor starts a new one. Both stacks are bounded by capacity and
+  total stored characters.
+- **Completion trie** (`src/trie.c`) — a character trie with terminal flags,
+  ranking weights and kinds (`keyword`, `common`, `word`, `snippet`). It is
+  seeded from 21 languages of keywords in `src/keywords_data.h` and learns
+  identifiers from the document.
+- **Clipboard queue** (`src/clipboard.c`) — a bounded FIFO ring: enqueue at the
+  tail, dequeue from the head, `get(n)` from the newest for `Alt-n`.
+- **Statistics** (`src/buffer.c`) — an O(n) scan for words, characters,
+  non-whitespace characters, lines and cursor position.
 
 Complexity notes and exam-style discussion are in
 [`docs/dsa_notes.md`](docs/dsa_notes.md).
 
 ## Live state bridge
 
-Every structure has a JSON-ready `to_dict()` view. While the editor runs it
-publishes a complete snapshot:
+The C editor builds a complete JSON snapshot from its structures and publishes
+it:
 
 - over HTTP at **`http://127.0.0.1:8765/state`**, and
 - to **`~/.local/state/dsa-editor/state.json`** (atomic writes, at most once per
@@ -204,6 +224,9 @@ from dsa_editor.bridge import default_state_file, read_state_file
 snapshot = read_state_file(default_state_file())
 ```
 
+`dsa_editor` now contains only that read-only bridge library (the editor is the
+C binary); the visualizer imports it unchanged.
+
 Useful endpoints:
 
 | Endpoint | Contents |
@@ -211,7 +234,7 @@ Useful endpoints:
 | `/state` | Complete snapshot |
 | `/state?wait=1&since=N&timeout=2` | Long-poll until a newer sequence |
 | `/trie?depth=6&limit=2000` | Trie tree on demand (deeper than the snapshot's depth-3 view) |
-| `/undo` `/redo` `/clipboard` `/stats` `/file` `/autosave` `/ui` | Subsets |
+| `/undo` `/redo` `/clipboard` `/stats` `/file` `/autosave` `/ui` `/document` | Subsets |
 | `/health` | Liveness, port, pid, sequence, uptime |
 
 The bridge is local-only (`127.0.0.1`), read-only and CORS-enabled. Disable it
@@ -231,37 +254,30 @@ anvil-viz --port 9000         # match a non-default editor port
 
 ```
 dsa-editor/
-├── dsa_editor/
-│   ├── app.py              # TUI layout, keybindings, autosave, state building
-│   ├── cli.py              # argparse entry point (`anvil`, `dsa-editor`)
-│   ├── fileio.py           # encoding/newline detection, atomic save
-│   ├── highlight.py        # Pygments lexer selection
-│   ├── keywords.py         # keyword seeds for the trie
-│   ├── data/keywords.json  # bundled keyword lists
-│   ├── structures/
-│   │   ├── stack.py        # BoundedStack, Snapshot, UndoRedoManager
-│   │   ├── trie.py         # Trie, completion, JSON tree view
-│   │   ├── queue.py        # ClipboardHistory FIFO queue
-│   │   └── stats.py        # word/character/line counting
-│   └── bridge/
-│       ├── hub.py          # thread-safe latest snapshot + long-poll condition
-│       ├── server.py       # read-only HTTP server
-│       ├── client.py       # StateClient for the visualizer
-│       └── statefile.py    # atomic JSON snapshot writer
-├── dsa_visualizer/
-│   ├── model.py            # trie lens, tidy layout, cards, sparkline, tracker
-│   ├── source.py           # background HTTP long-poll + JSON-file fallback
-│   ├── theme.py            # palette and canvas drawing helpers
-│   ├── app.py              # Tkinter window and live update pump
-│   ├── cli.py              # argparse entry point (`anvil-viz`)
-│   └── __main__.py         # `python -m dsa_visualizer`
-├── install.sh              # installs deps and links `anvil` + `anvil-viz`
+├── src/                    # the entire editor, C11 + POSIX
+│   ├── main.c              # argument parsing, startup, shutdown
+│   ├── editor.c            # editing model, key dispatch, commands, JSON snapshot
+│   ├── ui.c                # ANSI/termios renderer, key decoding, themes
+│   ├── buffer.c            # text buffer, cursor, selection, statistics
+│   ├── undo.c              # bounded undo/redo stacks and coalescing
+│   ├── clipboard.c         # bounded FIFO clipboard history
+│   ├── trie.c              # completion trie
+│   ├── keywords.c          # keyword seeds per language
+│   ├── keywords_data.h     # generated keyword tables (21 languages)
+│   ├── highlight.c         # per-language lexers and token colours
+│   ├── fileio.c            # encoding/newline detection, atomic save
+│   ├── bridge.c            # HTTP server, long-poll, atomic JSON state file
+│   ├── util.c              # strings, UTF-8, time helpers
+│   └── anvil.h             # shared structs and prototypes
+├── dsa_editor/bridge/      # read-only Python client kept for the visualizer
+├── dsa_visualizer/         # separate Tkinter visualizer (unchanged)
+├── Makefile                # builds build/anvil; `make test` runs the PTY test
+├── install.sh              # builds and links `anvil` + `anvil-viz`
 ├── run.sh                  # zero-install editor launcher
 ├── run-viz.sh              # zero-install visualizer launcher
-├── tests/                  # 88 unittest tests
-├── scripts/pty_smoke.py    # end-to-end TUI test through a pseudo-terminal
-├── scripts/bridge_smoke.py # end-to-end HTTP bridge test
-├── scripts/visualizer_smoke.py # editor + visualizer + screenshot test
+├── tests/                  # visualizer + bridge unit tests
+├── scripts/pty_smoke.c     # end-to-end editor test through a pseudo-terminal
+├── scripts/visualizer_smoke.py # visualizer + screenshot test
 ├── examples/
 │   ├── demo.py             # sample file for the demo
 │   └── watch_state.py      # minimal live-state consumer
@@ -277,18 +293,15 @@ dsa-editor/
 ## Testing
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v   # 88 unit tests
-.venv/bin/python scripts/pty_smoke.py               # real TUI through a PTY
-.venv/bin/python scripts/bridge_smoke.py            # live HTTP state + JSON file
-.venv/bin/python scripts/visualizer_smoke.py        # live visualizer + screenshot
+make test                                            # C editor through a real PTY
+.venv/bin/python -m unittest discover -s tests -v    # visualizer + bridge tests
 ```
 
-The unit tests cover the stacks, trie, queue, statistics, file
-encoding/newline round-trips, the HTTP server/client, app integration and the
-visualizer's model, tracker and both data sources. The PTY scripts launch the
-real full-screen editor, send keystrokes, and verify files on disk and live
-bridge data; the visualizer smoke test opens the actual window and captures a
-screenshot.
+`make test` builds and runs `scripts/pty_smoke.c`: it starts `build/anvil` in a
+pseudo-terminal, types, saves, undoes, copies, quits, then checks the file on
+disk, the HTTP endpoints and the final `status: "closed"` JSON snapshot. The
+Python tests cover the visualizer's model, tracker and data sources, plus the
+bridge client/server library.
 
 ## Limitations
 

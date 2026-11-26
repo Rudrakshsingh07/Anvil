@@ -1,10 +1,11 @@
 # DSA Editor Manual
 
-**Version 0.1.0**
+**Version 0.2.0**
 
-DSA Editor is a notepad-like text editor for the terminal with hand-written
-data structures.  The installed command is **`anvil`**; the Python package is
-`dsa_editor`.  This manual uses both names interchangeably.
+DSA Editor is a notepad-like text editor for the terminal written in C11 and
+POSIX with hand-written data structures.  The installed command is **`anvil`**.
+The editor has no Python runtime; the separate Tkinter visualizer (`anvil-viz`)
+is the only Python application in the project.
 
 The editor is built for a Data Structures & Algorithms lecture: the undo/redo
 stacks, completion trie, clipboard-history queue and live statistics are
@@ -52,23 +53,24 @@ a library for them:
 
 | Structure | Purpose | Source |
 |---|---|---|
-| Two bounded stacks | Undo and redo history | `dsa_editor/structures/stack.py` |
-| Character trie | Prefix completion and inline suggestions | `dsa_editor/structures/trie.py` |
-| FIFO queue | Clipboard history | `dsa_editor/structures/queue.py` |
-| Linear statistics | Live word/character/line counts | `dsa_editor/structures/stats.py` |
+| Two bounded stacks | Undo and redo history | `src/undo.c` |
+| Character trie | Prefix completion and inline suggestions | `src/trie.c` |
+| FIFO queue | Clipboard history | `src/clipboard.c` |
+| Linear statistics | Live word/character/line counts | `src/buffer.c` |
 
-The TUI library (`prompt_toolkit`) only draws the screen and handles raw
-keystrokes.  Pygments only tokenizes text for colouring.
+The terminal UI is a hand-written ANSI/termios renderer in `src/ui.c`; there is
+no ncurses or other UI library.  Syntax highlighting uses the built-in lexers in
+`src/highlight.c`, not an external highlighter.
 
 ## 2. Installation
 
 ### 2.1 Requirements
 
-- Python **3.10 or newer**
+- A C11 compiler (`cc`) and `make`
 - A modern terminal with ANSI colours
 - Linux, macOS, or WSL on Windows
-- `prompt_toolkit` and `Pygments` (installed automatically)
-- For the visualizer: Tkinter and a graphical session (X11 or Wayland)
+- For the visualizer: Python 3.10+, Tkinter, and a graphical session
+  (X11 or Wayland)
 
 ### 2.2 Quick install
 
@@ -81,10 +83,10 @@ cd dsa-editor
 
 The installer:
 
-1. creates `.venv` if it does not exist;
-2. installs the package in editable mode;
-3. links the `anvil` and `anvil-viz` commands into `~/.local/bin` (or
-   `$XDG_BIN_HOME`);
+1. builds `build/anvil` with `make`;
+2. creates `.venv` if it does not exist and installs the visualizer;
+3. links the C `anvil` binary and the `anvil-viz` command into `~/.local/bin`
+   (or `$XDG_BIN_HOME`);
 4. prints a note if that directory is not on `PATH`.
 
 Then run:
@@ -102,11 +104,18 @@ If you prefer to do the steps yourself:
 
 ```bash
 cd dsa-editor
+make
 python3 -m venv .venv
 .venv/bin/pip install -e .
 mkdir -p ~/.local/bin
-ln -sf "$PWD/.venv/bin/anvil" ~/.local/bin/anvil
+ln -sf "$PWD/build/anvil" ~/.local/bin/anvil
 ln -sf "$PWD/.venv/bin/anvil-viz" ~/.local/bin/anvil-viz
+```
+
+To install only the editor system-wide:
+
+```bash
+sudo make install          # /usr/local/bin/anvil
 ```
 
 Make sure `~/.local/bin` is on `PATH`.  For example, in `~/.zshrc` or
@@ -116,17 +125,16 @@ Make sure `~/.local/bin` is on `PATH`.  For example, in `~/.zshrc` or
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The venv also contains `dsa-editor` and `dsa-visualizer` aliases:
+The venv also contains the `dsa-visualizer` alias:
 
 ```bash
-.venv/bin/dsa-editor demo.py
 .venv/bin/dsa-visualizer
 ```
 
 ### 2.4 Run without installing
 
-`run.sh` and `run-viz.sh` create the venv on first use and run the packages
-directly:
+`run.sh` builds the C editor if needed; `run-viz.sh` creates the venv on first
+use:
 
 ```bash
 ./run.sh
@@ -146,8 +154,7 @@ anvil --version
 anvil-viz --version
 ```
 
-The output depends on the invoked name, for example `anvil 0.1.0` or
-`dsa-editor 0.1.0`, and `anvil-viz 0.1.0`.
+The editor prints `anvil 0.2.0`; the visualizer prints `anvil-viz 0.2.0`.
 
 If Tkinter is missing, `anvil-viz` prints the system package to install.
 `anvil-viz --check` works without a display.
@@ -182,7 +189,7 @@ anvil                       # empty untitled buffer
 anvil notes.md              # open notes.md, or create it on first save
 anvil ~/src/app.py          # ~ is expanded
 anvil --no-server file.py   # no HTTP bridge
-anvil --theme dracula       # different Pygments theme
+anvil --theme dracula       # monokai, dracula, solarized or light
 ```
 
 If `file` does not exist, the editor opens an empty buffer associated with
@@ -231,7 +238,7 @@ open it and shows an error instead of corrupting it.
 ### 4.1 Editor area
 
 - Line numbers on the left.
-- Syntax highlighting from the active Pygments lexer.
+- Syntax highlighting from the active built-in language lexer.
 - Soft-wrapped lines are off; long lines scroll horizontally.
 - The cursor is the terminal cursor.
 
@@ -470,17 +477,15 @@ language is shown.  Unknown languages are rejected with a message.
 ```text
 :theme monokai
 :theme dracula
+:theme solarized
+:theme light
 :theme
 ```
 
-Any Pygments style name works.  With no argument, the current theme is shown.
-The default is `monokai`.
-
-To list installed Pygments styles:
-
-```bash
-.venv/bin/python -c "from pygments.styles import get_all_styles; print(' '.join(sorted(get_all_styles())))"
-```
+Four palettes are built in: `monokai` (default), `dracula`, `solarized` and
+`light`.  The theme controls the editor background, text, syntax token colours,
+status bar, hint bar and data panel.  With no argument, the current theme and
+the available names are shown.  Unknown names are rejected.
 
 ## 9. Clipboard history
 
@@ -501,8 +506,7 @@ Details:
 - When the queue is full, the oldest entry is evicted.
 - Consecutive identical copies refresh the tail instead of adding a duplicate.
 - The queue is in memory only; it is not persisted between runs.
-- The editor also sets prompt_toolkit's in-memory clipboard, but the history
-  queue is the source for `Ctrl-V` and `Alt-n`.
+- The history queue is the only clipboard; `Ctrl-V` and `Alt-n` read from it.
 
 If your terminal does not send `Alt-1` as a distinct key, use `Ctrl-V` for the
 newest entry or configure the terminal's Meta/Alt behavior.
@@ -580,7 +584,7 @@ leading `:` is optional.
 | `:lang [language\|auto]` | `:language`, `:syntax` | Set or detect the language |
 | `:find [text]` | — | Find next; no argument repeats the last search |
 | `:goto line` | — | Jump to a line |
-| `:theme [name]` | — | Set or show the Pygments theme |
+| `:theme [name]` | — | Set or show the colour theme |
 | `:tab width` | — | Set the soft-tab width (clamped to 1–16) |
 | `:undo` | — | Undo |
 | `:redo` | — | Redo |
@@ -837,13 +841,7 @@ lecture script, is in [`visualizer.md`](visualizer.md).
 ## 15. Command-line options
 
 ```
-anvil [-h] [--autosave | --no-autosave]
-      [--autosave-interval SECONDS] [--port PORT] [--no-server]
-      [--state-file PATH] [--no-state-file] [--theme THEME]
-      [--tab-width TAB_WIDTH] [--panel | --no-panel]
-      [--undo-capacity UNDO_CAPACITY]
-      [--clipboard-capacity CLIPBOARD_CAPACITY] [--version]
-      [file]
+anvil [options] [file]
 ```
 
 | Option | Default | Meaning |
@@ -855,8 +853,8 @@ anvil [-h] [--autosave | --no-autosave]
 | `--no-server` | off | Disable the HTTP bridge |
 | `--state-file PATH` | XDG path | JSON snapshot path |
 | `--no-state-file` | off | Disable JSON snapshot writes |
-| `--theme THEME` | monokai | Pygments style name |
-| `--tab-width WIDTH` | 4 | Soft-tab width, clamped to 1–16 |
+| `--theme THEME` | monokai | Palette: monokai, dracula, solarized or light |
+| `--tab WIDTH` | 4 | Soft-tab width, clamped to 1–16 |
 | `--panel` / `--no-panel` | auto | Force the data panel on/off |
 | `--undo-capacity N` | 150 | Maximum snapshots per stack |
 | `--clipboard-capacity N` | 50 | Clipboard-history capacity |
@@ -894,7 +892,7 @@ Changing the tab width or theme does not persist across runs.
 
 - Check that `~/.local/bin` is on `PATH`.
 - Re-run `./install.sh`.
-- Or run `.venv/bin/anvil` directly.
+- Or run `./build/anvil` (or `./run.sh`) directly.
 
 ### `Ctrl-S` or `Ctrl-Q` does nothing
 
@@ -963,14 +961,14 @@ intentional.  Use `Ctrl-Y` to redo.
 
 ### A theme or language is unknown
 
-Themes must be valid Pygments style names.  Languages must be one of the
-bundled keyword languages or a language Pygments recognizes.  Use
-`:languages` for the bundled list.
+Themes must be one of `monokai`, `dracula`, `solarized` or `light`.  Languages
+must be one of the bundled keyword languages.  Use `:languages` for the list.
 
 ### Colours look wrong
 
 Use a 256-colour terminal (`TERM=xterm-256color`) and a font with ANSI colour
-support.  The theme only controls syntax colours; the UI colours are fixed.
+support.  The selected theme controls both syntax and UI colours; try
+`:theme light` on a light terminal background.
 
 ### The editor looks cramped
 
@@ -982,30 +980,24 @@ with `--no-panel`.
 ### 18.1 Module map
 
 ```
-dsa_editor/
-├── app.py          TUI layout, keybindings, autosave, state snapshot builder
-├── cli.py          argparse entry point for anvil / dsa-editor
-├── fileio.py       encoding/newline detection and atomic save
-├── highlight.py    Pygments lexer selection
-├── keywords.py     keyword seeds loaded from data/keywords.json
-├── structures/
-│   ├── stack.py    BoundedStack, Snapshot, UndoRedoManager
-│   ├── trie.py     Trie, completion, JSON tree view
-│   ├── queue.py    ClipboardHistory FIFO queue
-│   └── stats.py    word/character/line counting
-└── bridge/
-    ├── hub.py      latest snapshot + long-poll condition
-    ├── server.py   read-only HTTP server
-    ├── client.py   StateClient
-    └── statefile.py atomic JSON writer
+src/                 the entire editor, C11 + POSIX
+├── main.c           argument parsing, startup, shutdown
+├── editor.c         editing model, key dispatch, commands, JSON snapshot
+├── ui.c             ANSI/termios renderer, key decoding, themes
+├── buffer.c         text buffer, cursor, selection, statistics
+├── undo.c           bounded undo/redo stacks and coalescing
+├── clipboard.c      bounded FIFO clipboard history
+├── trie.c           completion trie
+├── keywords.c       keyword seeds per language
+├── keywords_data.h  generated keyword tables (21 languages)
+├── highlight.c      per-language lexers and token colours
+├── fileio.c         encoding/newline detection and atomic save
+├── bridge.c         HTTP server, long-poll, atomic JSON state file
+├── util.c           strings, UTF-8, time helpers
+└── anvil.h          shared structs and prototypes
 
-dsa_visualizer/
-├── model.py        trie lens, tidy layout, cards, sparkline, change tracker
-├── source.py       background HTTP long-poll + JSON-file fallback
-├── theme.py        palette and canvas drawing helpers
-├── app.py          Tkinter window and live update pump
-├── cli.py          argparse entry point for anvil-viz
-└── __main__.py     python -m dsa_visualizer
+dsa_editor/bridge/   read-only Python client kept for the visualizer
+dsa_visualizer/      separate Tkinter visualizer (unchanged)
 ```
 
 ### 18.2 Data flow
@@ -1014,55 +1006,55 @@ dsa_visualizer/
 keystroke
    │
    ▼
-prompt_toolkit Buffer
-   │  on_text_changed
+ui_read_key()  (termios + ANSI decoder)
+   │
    ▼
-EditorApp
-   ├── UndoRedoManager.record()      custom undo stack
-   ├── Trie.learn_text()             learn identifiers
-   ├── compute_text_stats()          live counts
-   ├── ClipboardHistory             copy/cut history
-   └── build_state() ──► StateHub ──► HTTP server ─┐
-                                  └─► state.json ─┤
-                                                  ▼
-                                     dsa_visualizer (separate process)
-                                       LiveSource ──► Tkinter window
+editor_handle_key()
+   ├── undo_record()                custom undo stack
+   ├── trie_learn_text()            learn identifiers
+   ├── compute_stats()              live counts
+   ├── clipboard_push()             copy/cut history
+   └── editor_build_state() ──► bridge_publish() ──► HTTP server ─┐
+                                  └─► state.json ────────────────┤
+                                                                 ▼
+                                                    dsa_visualizer (separate process)
+                                                      LiveSource ──► Tkinter window
 ```
 
 The visualizer is a pure consumer of the public bridge.  It never imports
-`dsa_editor` internals, so it can run on a second monitor, in another Python
+editor internals, so it can run on a second monitor, in another Python
 environment, or against a saved state file.
 
 ### 18.3 Adding a command
 
-1. Add a branch in `EditorApp._run_command`.
-2. Update the help text (`HELP_TEXT`) and this manual.
-3. Add a test in `tests/test_app.py` if the command changes state.
+1. Add a branch to `editor_run_command()` in `src/editor.c`.
+2. Update `HELP_TEXT` in `src/ui.c` and this manual.
+3. Rebuild with `make` and run `make test`.
 
 ### 18.4 Adding a keybinding
 
-Add a handler in `EditorApp._build_key_bindings`.  Use `filter=editor_focused`
-when the key should only act in the editor, and remember that
-`@kb.add("c-x", "c-u")` creates a two-key sequence.
+Decode the key in `ui_read_key()` (`src/ui.c`) if it is a new escape sequence,
+then add a `case` in `editor_handle_key()` (`src/editor.c`).  Use the
+`KEY_MOD_SHIFT`, `KEY_MOD_CTRL` and `KEY_MOD_ALT` bits for modifiers.
 
 ### 18.5 Adding a language
 
-Add keyword entries to `dsa_editor/data/keywords.json` and, if needed, an alias
-in `dsa_editor/keywords.py`.  Pygments supplies the syntax lexer.
+Add keyword entries to the generator source, regenerate
+`src/keywords_data.h`, and add an alias plus a lexer rule in
+`src/highlight.c`.  Rebuild with `make`.
 
 ### 18.6 Tests
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v   # 88 tests
-.venv/bin/python scripts/pty_smoke.py
-.venv/bin/python scripts/bridge_smoke.py
-.venv/bin/python scripts/visualizer_smoke.py
+make test                                            # C editor through a PTY
+.venv/bin/python -m unittest discover -s tests -v    # visualizer + bridge tests
+.venv/bin/python scripts/visualizer_smoke.py         # window + screenshot
 ```
 
-The unit suite covers the structures, file I/O, bridge, app integration and the
-visualizer model/source.  The PTY scripts launch the real full-screen editor;
-the visualizer smoke test opens the actual Tkinter window and captures a
-screenshot.
+`make test` builds and runs `scripts/pty_smoke.c`; it launches the real
+full-screen editor, sends keystrokes, and verifies the file on disk, the HTTP
+endpoints and the final JSON snapshot.  The Python suite covers the
+visualizer's model, tracker and data sources plus the bridge library.
 
 ## 19. Lecture demo walkthrough
 
@@ -1138,9 +1130,9 @@ The trie ships keyword lists for:
 `json`, `kotlin`, `lua`, `markdown`, `php`, `python`, `ruby`, `rust`, `sql`,
 `swift`, `typescript`, `yaml`.
 
-Unknown extensions are treated as plain text.  Pygments may still highlight
-other languages if selected with `:lang`, and the trie falls back to generic
-programming words plus identifiers learned from the document.
+Unknown extensions are treated as plain text.  Select another language with
+`:lang`; the trie falls back to generic programming words plus identifiers
+learned from the document.
 
 ## Appendix C: glossary
 

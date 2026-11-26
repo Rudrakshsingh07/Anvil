@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# Convenience launcher: creates the local venv on first run, then starts the editor.
+# Convenience launcher: builds the C editor if needed, then runs it.
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if [ ! -x .venv/bin/python ]; then
-    python3 -m venv .venv
-    .venv/bin/pip install --disable-pip-version-check -q -r requirements.txt
+if [ ! -x build/anvil ]; then
+    make -j"${JOBS:-4}"
 fi
 
-exec .venv/bin/python -m dsa_editor "$@"
+exec ./build/anvil "$@"
